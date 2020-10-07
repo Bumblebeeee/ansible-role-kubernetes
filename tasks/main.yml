@@ -1,0 +1,37 @@
+---
+# tasks file for install-kubernetes
+
+- name: Add Kubernetes's official GPG key
+  apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    state: present
+
+- name: Set up the stable repository
+  apt_repository:
+    repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+    state: present
+
+- name: Install the latest version of kubectl kubeadm kubelet
+  apt:
+    name: "{{ packages }}"
+    state: present
+    update_cache: yes
+
+- name: Create docker service directory for systemd
+  file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+
+- name: Set up the Docker daemon
+  copy: 
+    src: "{{ role_path }}/files/daemon.json"
+    dest: /etc/docker/daemon.json
+
+- name: Starting service
+  systemd:
+    daemon_reload: yes
+    name: docker
+    state: restarted
+
+
+#docker plugin install --grant-all-permissions vieux/sshfs

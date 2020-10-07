@@ -1,0 +1,6 @@
+---
+# defaults file for install-kubernetes
+packages:
+  - kubectl
+  - kubeadm
+  - kubelet
