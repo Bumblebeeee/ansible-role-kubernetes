@@ -45,6 +45,9 @@
     name: docker
     state: restarted
 
+- pip:
+  name: boto3
+
 - name: Download Kubernetes CA
   aws_s3:
     bucket: davids-kubernetes-cluster
