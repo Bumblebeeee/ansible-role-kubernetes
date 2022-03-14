@@ -1,3 +1,8 @@
 ---
 # vars file for install-kubernetes
 include_docker_volume_netshare: false
+packages:
+  - kubectl
+  - kubeadm
+  - kubelet
+  - python3-pip
