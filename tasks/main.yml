@@ -9,7 +9,7 @@
     name: "{{ item }}"
     fstype: swap
     state: absent
-  with_item:
+  with_items:
     - swap
     - none
 
@@ -52,7 +52,7 @@
     dest: /data/kube_certs/{{ item }}
     mode: get
     profile: david_s3
-  with_item:
+  with_items:
     - ca.key
     - ca.crt
 
