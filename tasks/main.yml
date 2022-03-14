@@ -48,7 +48,7 @@
 - name: Download Kubernetes CA
   aws_s3:
     bucket: davids-kubernetes-cluster
-    object: {{ item }}
+    object: "{{ item }}"
     dest: /data/kube_certs/{{ item }}
     mode: get
     profile: david_s3
