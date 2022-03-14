@@ -1,5 +1,17 @@
 ---
 # tasks file for install-kubernetes
+- name: Disable swap
+  command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+
+- name: Remove swapfile from /etc/fstab
+  mount:
+    name: "{{ item }}"
+    fstype: swap
+    state: absent
+  with_item:
+    - swap
+    - none
 
 - name: Add Kubernetes's official GPG key
   apt_key:
@@ -32,6 +44,17 @@
     daemon_reload: yes
     name: docker
     state: restarted
+
+- name: Download Kubernetes CA
+  aws_s3:
+    bucket: davids-kubernetes-cluster
+    object: {{ item }}
+    dest: /data/kube_certs/{{ item }}
+    mode: get
+    profile: david_s3
+  with_item:
+    - ca.key
+    - ca.crt
 
 
 #docker plugin install --grant-all-permissions vieux/sshfs
