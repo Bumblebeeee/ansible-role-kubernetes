@@ -48,6 +48,7 @@ galaxy_info:
     #       Maximum 20 tags per role.
 
 dependencies: 
-  - name: bumblebeeee.install_docker
+  - src: git@bitbucket.org:davids-projects/install_docker.git
+    name: install_docker
   # List your role dependencies here, one per line. Be sure to remove the '[]' above,
   # if you add dependencies to this list.
