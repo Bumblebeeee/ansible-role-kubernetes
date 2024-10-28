@@ -2,4 +2,9 @@
 - hosts: all
   become: yes
   roles:
-    - install-kubernetes
+    - role: install_docker
+      vars:
+        docker_user:
+          - vagrant
+        include_docker_volume_netshare: false
+    - role: install-kubernetes

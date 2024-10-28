@@ -1,0 +1,3 @@
+- src: https://github.com/Bumblebeeee/install-kubernetes
+- src: git@bitbucket.org:davids-projects/install_docker.git
+  scm: git
