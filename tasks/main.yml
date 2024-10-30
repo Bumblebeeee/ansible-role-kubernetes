@@ -1,64 +1,52 @@
 ---
-# tasks file for install-kubernetes
-- name: Disable swap
-  command: swapoff -a
-  when: ansible_swaptotal_mb > 0
+- include_tasks: init.yml
 
-- name: Remove swapfile from /etc/fstab
-  mount:
-    name: "{{ item }}"
-    fstype: swap
-    state: absent
-  with_items:
-    - swap
-    - none
+# - name: Add Kubernetes's official GPG key
+#   apt_key:
+#     url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
+#     state: present
 
-- name: Add Kubernetes's official GPG key
-  apt_key:
-    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-    state: present
+# - name: Set up the stable repository
+#   apt_repository:
+#     repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+#     state: present
 
-- name: Set up the stable repository
-  apt_repository:
-    repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
-    state: present
+# - name: Install the latest version of kubectl kubeadm kubelet
+#   apt:
+#     name: "{{ packages }}"
+#     state: present
+#     update_cache: yes
 
-- name: Install the latest version of kubectl kubeadm kubelet
-  apt:
-    name: "{{ packages }}"
-    state: present
-    update_cache: yes
+# - name: Create docker service directory for systemd
+#   file:
+#     path: /etc/systemd/system/docker.service.d
+#     state: directory
 
-- name: Create docker service directory for systemd
-  file:
-    path: /etc/systemd/system/docker.service.d
-    state: directory
+# - name: Set up the Docker daemon
+#   copy: 
+#     src: "{{ role_path }}/files/daemon.json"
+#     dest: /etc/docker/daemon.json
 
-- name: Set up the Docker daemon
-  copy: 
-    src: "{{ role_path }}/files/daemon.json"
-    dest: /etc/docker/daemon.json
+# - name: Starting service
+#   systemd:
+#     daemon_reload: yes
+#     name: docker
+#     state: restarted
 
-- name: Starting service
-  systemd:
-    daemon_reload: yes
-    name: docker
-    state: restarted
+# - name: install boto3 
+#   pip:
+#     name: boto3
 
-- name: install boto3 
-  pip:
-    name: boto3
-
-- name: Download Kubernetes CA
-  aws_s3:
-    bucket: davids-kubernetes-cluster
-    object: "{{ item }}"
-    dest: /data/kube_certs/{{ item }}
-    mode: get
-    profile: david_s3
-  with_items:
-    - ca.key
-    - ca.crt
+# - name: Download Kubernetes CA
+#   aws_s3:
+#     bucket: davids-kubernetes-cluster
+#     object: "{{ item }}"
+#     dest: /data/kube_certs/{{ item }}
+#     mode: get
+#     profile: david_s3
+#   with_items:
+#     - ca.key
+#     - ca.crt
 
 
-#docker plugin install --grant-all-permissions vieux/sshfs
+# #docker plugin install --grant-all-permissions vieux/sshfs

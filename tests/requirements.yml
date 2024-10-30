@@ -1,3 +1,6 @@
-- src: https://github.com/Bumblebeeee/install-kubernetes
-- src: git@bitbucket.org:davids-projects/install_docker.git
+- src: git@github.com:Bumblebeeee/ansible-role-docker.git
   scm: git
+  version: main
+- src: git@github.com:Bumblebeeee/ansible-role-kubernetes.git
+  scm: git
+  version: master

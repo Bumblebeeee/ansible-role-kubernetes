@@ -1,8 +1,16 @@
 ---
 # vars file for install-kubernetes
-include_docker_volume_netshare: false
-packages:
-  - kubectl
-  - kubeadm
-  - kubelet
-  - python3-pip
+docker:
+  include_docker_volume_netshare: false
+kubernetes:
+  packages:
+    - kubectl
+    - kubeadm
+    - kubelet
+    - python3-pip
+
+  pre_packages:
+    - apt-transport-https
+    - ca-certificates
+    - curl
+    - gnupg
