@@ -1,0 +1,30 @@
+{
+    "changed": false,
+    "cmd": "/usr/bin/rsync --delay-updates -F --compress --archive --rsh='/usr/bin/ssh -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' --rsync-path='sudo -u root rsync' --out-format='<<CHANGED>>%i %n%L' '/etc/kubernetes/pki/etcd/ca.*' dtang@192.168.0.212:/etc/kubernetes/pki/etcd/",
+    "msg": "Warning: Permanently added '192.168.0.212' (ED25519) to the list of known hosts.
+    dtang@192.168.0.212: Permission denied (publickey).
+    rsync: connection unexpectedly closed (0 bytes received so far) [sender]
+    rsync error: unexplained error (code 255) at io.c(231) [sender=3.2.7]\n",
+    "rc": 255
+}
+
+
+
+/usr/bin/rsync --delay-updates -F --compress --archive   --out-format='<<CHANGED>>%i %n%L' '/etc/kubernetes/pki/etcd/ca.*' dtang@192.168.0.212:/etc/kubernetes/pki/etcd/"
+
+
+
+
+rsync --rsync-path='sudo -u root rsync' --rsh='/usr/bin/ssh -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' '/etc/kubernetes/pki/etcd/ca.*' dtang@192.168.0.212:/etc/kubernetes/pki/etcd/
+
+
+
+etcd:
+    external:
+    endpoints:
+        - https://192.168.0.212:2379 # change ETCD_0_IP appropriately
+        - https://192.168.0.213:2379 # change ETCD_1_IP appropriately
+        - https://192.168.0.214:2379 # change ETCD_2_IP appropriately
+    caFile: /etc/kubernetes/pki/etcd/ca.crt
+    certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt
+    keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key

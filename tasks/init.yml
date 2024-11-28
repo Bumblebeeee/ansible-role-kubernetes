@@ -18,7 +18,7 @@
   apt:
     update_cache: yes
     install_recommends: no
-    name: "{{ apt_packages }}"
+    name: "{{ kubernetes.pre_packages }}"
 
 - name: Ensure /etc/apt/keyrings directory exists
   ansible.builtin.file:
@@ -37,3 +37,8 @@
   ansible.builtin.file:
     path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
     mode: '0644'
+
+- name: Set up Kubernetes repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /"
+    state: present

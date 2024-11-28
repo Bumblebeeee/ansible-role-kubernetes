@@ -1,16 +1,87 @@
 ---
 # vars file for install-kubernetes
-docker:
-  include_docker_volume_netshare: false
 kubernetes:
   packages:
     - kubectl
     - kubeadm
     - kubelet
-    - python3-pip
-
+    - kubernetes-cni
   pre_packages:
     - apt-transport-https
     - ca-certificates
     - curl
     - gnupg
+    - python3-boto3
+  kubeadm_config_file_path: '/etc/kubernetes/kubeadm-kubelet-config.yaml'
+  init_configuration:
+    localAPIEndpoint:
+      advertiseAddress: "{{ kubernetes_apiserver_advertise_address | default(ansible_default_ipv4.address, true) }}"
+      bindPort: 6443
+    nodeRegistration:
+      criSocket: "unix:///var/run/crio/crio.sock"
+  cluster_configuration:
+    certificatesDir: "/etc/kubernetes/pki" #TODO: what if the certs expires? how about the key?
+    networking:
+      podSubnet: "{{ kubernetes_pod_network.cidr }}"
+    cgroupDriver: "systemd"
+    apiServer:
+      certSANs:
+       - kube-cluster.homelab.local
+       - kubec.dev.bestdavid.me
+    etcd:
+      external:
+        endpoints:
+          - https://192.168.0.212:2379 # change ETCD_0_IP appropriately
+          - https://192.168.0.213:2379 # change ETCD_1_IP appropriately
+          - https://192.168.0.214:2379 # change ETCD_2_IP appropriately
+        caFile: /etc/kubernetes/pki/etcd/ca.crt
+        certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt
+        keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key
+  allow_pods_on_control_plane: true
+etcd:
+  kubelet_config_drop_in_location: '/etc/systemd/system/kubelet.service.d'
+  etcd_config_file_path: '/etc/kubernetes/etcd-kubelet-config.yaml'
+  init_configuration:
+    nodeRegistration:
+      name: "{{ ansible_hostname }}"
+    localAPIEndpoint:
+      advertiseAddress: "{{ ansible_default_ipv4.address }}"
+  cluster_configuration:
+    etcd:
+        local:
+            serverCertSANs:
+              - "{{ ansible_default_ipv4.address }}"
+            peerCertSANs:
+              - "{{ ansible_default_ipv4.address }}"
+            extraArgs:
+              - name: initial-cluster
+                value: kube12=https://192.168.0.212:2380,kube13=https://192.168.0.213:2380,kube14=https://192.168.0.214:2380 #TODO
+              - name: initial-cluster-state
+                value: new
+              - name: name
+                value: "{{ ansible_hostname }}"
+              - name: listen-peer-urls
+                value: "https://{{ ansible_default_ipv4.address }}:2380"
+              - name: listen-client-urls
+                value: "https://{{ ansible_default_ipv4.address }}:2379"
+              - name: advertise-client-urls
+                value: "https://{{ ansible_default_ipv4.address }}:2379"
+              - name: initial-advertise-peer-urls
+                value: "https://{{ ansible_default_ipv4.address }}:2380"
+  kubelet_configuration:
+    authentication:
+      anonymous:
+        enabled: false
+      webhook:
+        enabled: false
+    authorization:
+      mode: AlwaysAllow
+    cgroupDriver: systemd
+    address: 127.0.0.1
+    containerRuntimeEndpoint: "unix:///var/run/crio/crio.sock"
+    staticPodPath: /etc/kubernetes/manifests
+kubernetes_apiserver_advertise_address: ''
+kubernetes_pod_network:
+  cni: 'flannel'
+  cidr: '10.244.0.0/16'
+  manifest_file: 'https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml'

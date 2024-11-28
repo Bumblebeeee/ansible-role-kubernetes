@@ -1,0 +1,96 @@
+---
+- name: Create the directory for the etcd_kubeadm_config_file
+  file:
+    path: "{{ etcd.etcd_config_file_path | dirname }}"
+    state: directory
+
+- name: Deploy the config-file for kubeadm
+  template:
+    src: "etcd-kubeadm-config.j2"
+    dest: "{{ etcd.etcd_config_file_path }}"
+
+- name: Create the directory for the drop-in kubelet config
+  file:
+    path: "{{ etcd.kubelet_config_drop_in_location }}"
+    state: directory
+
+- name: Deploy systemd drop-in kubelet service 
+  template:
+    src: "20-etcd-service-manager.j2"
+    # dest: "/usr/lib/systemd/system/kubelet.service.d/20-etcd-service-manager.conf"
+    dest: "{{ etcd.kubelet_config_drop_in_location }}/20-etcd-service-manager.conf"
+
+- name: Deploy systemd drop-in kubelet service config 
+  template:
+    src: "etcd-kubelet-config.j2"
+    dest: "{{ etcd.kubelet_config_drop_in_location }}/etcd-kubelet.yaml"
+
+- name: Just force systemd to reread configs
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart kubelet
+  service: name=kubelet state=restarted
+
+- name: Ensure the ca directory exists
+  file:
+    path: "/etc/kubernetes/pki/etcd"
+    state: directory
+    mode: '0755'
+
+- name: Copy etcd-ca from the first control plane to etcd nodes
+  delegate_to: "{{ groups['kube-master'][0] }}"
+  synchronize:
+    src: "/etc/kubernetes/pki/etcd/{{ item }}"
+    dest: "/etc/kubernetes/pki/etcd/"
+    rsync_opts:
+      - "--rsync-path='sudo rsync'"
+  when: inventory_hostname in groups['etcd']
+  with_items: 
+    - ca.crt
+    - ca.key
+
+# - name: Download etcd-ca, etcd-key from s3
+#   aws_s3:
+#     bucket: "{{ etcd_ca_bucket }}"
+#     object: "{{ item.s3_path }}"
+#     dest: "{{ item.local_path }}"
+#     mode: get
+#   with_items:
+#     - { s3_path: "{{ etcd_ca_cert }}", local_path: '/etc/kubernetes/pki/etcd/ca.crt' }
+#     - { s3_path: "{{ etcd_ca_key }}", local_path: '/etc/kubernetes/pki/etcd/ca.key' }
+#   environment:
+#     AWS_PROFILE: "{{ aws_profile }}"
+
+# - name: Set permissions on downloaded files
+#   file:
+#     path: "{{ item.local_path }}"
+#     owner: "{{ item.owner }}"
+#     group: "{{ item.owner }}"
+#     mode: "{{ item.mode }}"
+#   with_items:
+#     - { local_path: '/etc/kubernetes/pki/etcd/ca.crt', owner: 'root', mode: '0644' }
+#     - { local_path: '/etc/kubernetes/pki/etcd/ca.key', owner: 'root', mode: '0600' }
+
+
+# kubeadm init phase certs etcd-server --config=/tmp/${HOST2}/kubeadmcfg.yaml
+# kubeadm init phase certs etcd-peer --config=/tmp/${HOST2}/kubeadmcfg.yaml
+# kubeadm init phase certs etcd-healthcheck-client --config=/tmp/${HOST2}/kubeadmcfg.yaml
+# kubeadm init phase certs apiserver-etcd-client --config=/tmp/${HOST2}/kubeadmcfg.yaml
+- name: Run kubeadm init phase certs
+  command: kubeadm init phase certs "{{ item }}"
+  loop:
+    - etcd-server
+    - etcd-peer
+    - etcd-healthcheck-client
+    - apiserver-etcd-client
+  args:
+    creates: "/etc/kubernetes/pki/{{ item | regex_replace('^etcd-', 'etcd/') }}.key"
+
+# kubeadm init phase etcd local --config=/tmp/${HOST0}/kubeadmcfg.yaml
+- name: Run kubeadm init phase etcd local (if etcd is not running)
+  command: >
+    kubeadm init phase etcd local 
+    --config={{ etcd.etcd_config_file_path }}
+  args:
+    creates: "/etc/kubernetes/manifests/etcd.yaml"

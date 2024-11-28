@@ -1,0 +1,49 @@
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+# Set the cgroup driver to match the container runtime
+cgroupDriver: systemd
+
+# Configure the address and port for the kubelet
+address: 0.0.0.0
+port: 10250
+
+# Allow the kubelet to automatically register this node with the Kubernetes API server
+registerNode: true
+
+# Enable or disable CPU and memory limits on pods
+enforceNodeAllocatable: ["pods"]
+
+# Configure logging verbosity for kubelet (0 for least verbose, up to 10)
+v: 2
+
+# Configure authentication for the kubelet API
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+  x509:
+    clientCAFile: "/etc/kubernetes/pki/ca.crt"
+
+# Enable or disable admission plugins, like PodSecurityPolicy or NodeRestriction
+enableControllerAttachDetach: true
+
+# Set the maxPods to control the maximum number of pods on a node
+maxPods: 110
+
+# Set image garbage collection policy
+imageGCHighThresholdPercent: 85
+imageGCLowThresholdPercent: 80
+
+# Configure eviction thresholds for disk and memory pressure
+evictionHard:
+  memory.available: "200Mi"
+  nodefs.available: "10%"
+  nodefs.inodesFree: "5%"
+  imagefs.available: "15%"
+
+# Configure the directory paths used by kubelet
+volumePluginDir: "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
+
+# Configure the CPU Manager policy (static or none)
+cpuManagerPolicy: "static"

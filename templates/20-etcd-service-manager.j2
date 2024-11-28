@@ -1,0 +1,5 @@
+[Service]
+Environment="KUBELET_CONFIG_ARGS=--config={{ etcd.kubelet_config_drop_in_location }}/etcd-kubelet.yaml"
+ExecStart=
+ExecStart=/usr/bin/kubelet $KUBELET_CONFIG_ARGS
+Restart=always
