@@ -42,3 +42,55 @@
   ansible.builtin.apt_repository:
     repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /"
     state: present
+
+
+# TODO:
+- name: Add sudo rule for {{ ansible_user }} in /etc/sudoers.d/
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/{{ ansible_user }}_rsync
+    content: "{{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/rsync"
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'
+
+- name: Ensure .ssh directory exists for the {{ ansible_user }}
+  ansible.builtin.file:
+    path: /home/{{ ansible_user }}/.ssh
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0700'
+
+- name: Generate SSH key pair
+  ansible.builtin.openssh_keypair:
+    path: /home/{{ ansible_user }}/.ssh/id_rsa
+    type: rsa
+    size: 4096
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  register: ssh_keypair
+  when:
+    inventory_hostname == groups['kube-master'][0]
+
+- name: Display generated public key (optional)
+  debug:
+    msg: "Public Key: {{ ssh_keypair.public_key }}"
+  when:
+    inventory_hostname == groups['kube-master'][0]
+
+- name: Set the public key among etcd group
+  set_fact:
+    etcd_public_key: "{{ ssh_keypair.public_key }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  with_items: "{{ groups['etcd'] }}"
+  when: ssh_keypair.public_key is defined
+
+- name: Add the public key to the target host's authorized_keys
+  authorized_key:
+    user: "{{ ansible_user }}"
+    state: present
+    key: "{{ etcd_public_key }}"
+  when: inventory_hostname in groups['etcd']

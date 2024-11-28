@@ -45,6 +45,7 @@
     dest: "/etc/kubernetes/pki/etcd/"
     rsync_opts:
       - "--rsync-path='sudo rsync'"
+      - "--rsh=\"/usr/bin/ssh -i /home/{{ ansible_user }}/.ssh/id_rsa -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\""
   when: inventory_hostname in groups['etcd']
   with_items: 
     - ca.crt
