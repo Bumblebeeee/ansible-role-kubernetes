@@ -20,7 +20,7 @@ kubernetes:
     nodeRegistration:
       criSocket: "unix:///var/run/crio/crio.sock"
   cluster_configuration:
-    certificatesDir: "/etc/kubernetes/pki" #TODO: what if the certs expires? how about the key?
+    certificatesDir: "/etc/kubernetes/pki" # [renew](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/)
     networking:
       podSubnet: "{{ kubernetes_pod_network.cidr }}"
     cgroupDriver: "systemd"
@@ -28,6 +28,7 @@ kubernetes:
       certSANs:
        - kube-cluster.homelab.local
        - kubec.dev.bestdavid.me
+    # etcd config will be generated in control-plane-setup.yml when etcd in HA mode
   allow_pods_on_control_plane: true
 etcd:
   kubelet_config_drop_in_location: '/etc/systemd/system/kubelet.service.d'

@@ -19,12 +19,12 @@
         keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key
   when: groups['etcd'] | default([], true) | count >= 3
 
-- name: Merge etcd_config into kubernetes cluster_configuration
+- name: Merge etcd_config into cluster_configuration
   set_fact:
     cluster_configuration: "{{ kubernetes.cluster_configuration | combine({'etcd': etcd_config}) }}"
   when: groups['etcd'] | default([], true) | count >= 3
 
-- name: Merge etcd_config into kubernetes cluster_configuration
+- name: Merge cluster_configuration into kubernetes
   set_fact:
     kubernetes: "{{ kubernetes | combine({'cluster_configuration': cluster_configuration}) }}"
   when: groups['etcd'] | default([], true) | count >= 3
@@ -39,7 +39,7 @@
 # scp /etc/kubernetes/pki/etcd/ca.crt "${CONTROL_PLANE}": # Ignore. This file was created on the first CP
 # scp /etc/kubernetes/pki/apiserver-etcd-client.crt "${CONTROL_PLANE}":
 # scp /etc/kubernetes/pki/apiserver-etcd-client.key "${CONTROL_PLANE}":
-- name: Copy  from the first etcd server to the control plane
+- name: Copy apiserver-etcd-client cert & key from the first etcd server to the control plane
   delegate_to: "{{ groups['etcd'][0] }}"
   synchronize:
     src: "/etc/kubernetes/pki/{{ item }}"
@@ -47,8 +47,10 @@
     rsync_opts:
       - "--rsync-path='sudo rsync'"
       - "--rsh=\"/usr/bin/ssh -i /home/{{ ansible_user }}/.ssh/id_rsa -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\""
-  when: inventory_hostname in groups['control-plane']
-  with_items: 
+  when:
+    - groups['etcd'] | default([], true) | count >= 3
+    - inventory_hostname in groups['control-plane']
+  with_items:
     - apiserver-etcd-client.crt
     - apiserver-etcd-client.key
 
