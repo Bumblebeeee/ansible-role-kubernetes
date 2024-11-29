@@ -1,4 +1,14 @@
 ---
+- name: Generate etcd ha cluster init_configuration
+  set_fact:
+    etcd_endpoints: >-
+      {%- set endpoints = [] -%}
+      {%- for host in groups['etcd'] -%}
+        {%- set hostname = hostvars[host]['ansible_hostname'] -%}
+        {%- set _ = endpoints.append(hostname + '=https://' + host + ':2380') -%}
+      {%- endfor -%}
+      {{ endpoints | join(',') }}
+
 - name: Create the directory for the etcd_kubeadm_config_file
   file:
     path: "{{ etcd.etcd_config_file_path | dirname }}"
@@ -39,7 +49,7 @@
     mode: '0755'
 
 - name: Copy etcd-ca from the first control plane to etcd nodes
-  delegate_to: "{{ groups['kube-master'][0] }}"
+  delegate_to: "{{ groups['control-plane'][0] }}"
   synchronize:
     src: "/etc/kubernetes/pki/etcd/{{ item }}"
     dest: "/etc/kubernetes/pki/etcd/"
@@ -50,6 +60,9 @@
   with_items: 
     - ca.crt
     - ca.key
+
+
+# TODO: verify if etcd is up and running
 
 # - name: Download etcd-ca, etcd-key from s3
 #   aws_s3:

@@ -1,0 +1,17 @@
+all:
+    children:
+        control-plane:
+            hosts:
+                # pi01.homelab.local:
+                # alfred.homelab.local:
+                192.168.0.211:
+        # worker:
+        #     hosts:
+        #         192.168.0.212:
+        #         192.168.0.213:
+        #         192.168.0.214:
+        etcd:
+            hosts:
+                192.168.0.212:
+                192.168.0.213:
+                192.168.0.214:

@@ -1,0 +1,94 @@
+---
+- name: Create the directory for the kubernetes_config_file
+  file:
+    path: "{{ kubernetes.kubeadm_config_file_path | dirname }}"
+    state: directory
+
+- name: Set etcd external endpoints dynamically
+  set_fact:
+    etcd_config:
+      external:
+        endpoints: >
+          {%- set endpoints = [] -%}
+          {%- for host in groups['etcd'] -%}
+          {%- set _ = endpoints.append('https://' + host + ':2379') -%}
+          {%- endfor -%}
+          {{ endpoints }}
+        caFile: /etc/kubernetes/pki/etcd/ca.crt
+        certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt
+        keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key
+  when: groups['etcd'] | default([], true) | count >= 3
+
+- name: Merge etcd_config into kubernetes cluster_configuration
+  set_fact:
+    cluster_configuration: "{{ kubernetes.cluster_configuration | combine({'etcd': etcd_config}) }}"
+  when: groups['etcd'] | default([], true) | count >= 3
+
+- name: Merge etcd_config into kubernetes cluster_configuration
+  set_fact:
+    kubernetes: "{{ kubernetes | combine({'cluster_configuration': cluster_configuration}) }}"
+  when: groups['etcd'] | default([], true) | count >= 3
+
+- name: Deploy the config-file for kubeadm and kubelet
+  template:
+    src: "cluster-kubeadm-config.j2"
+    dest: "{{ kubernetes.kubeadm_config_file_path }}"
+
+# Copy the following files from any etcd node in the cluster to the first control plane node:
+# export CONTROL_PLANE="ubuntu@10.0.0.7"
+# scp /etc/kubernetes/pki/etcd/ca.crt "${CONTROL_PLANE}": # Ignore. This file was created on the first CP
+# scp /etc/kubernetes/pki/apiserver-etcd-client.crt "${CONTROL_PLANE}":
+# scp /etc/kubernetes/pki/apiserver-etcd-client.key "${CONTROL_PLANE}":
+- name: Copy  from the first etcd server to the control plane
+  delegate_to: "{{ groups['etcd'][0] }}"
+  synchronize:
+    src: "/etc/kubernetes/pki/{{ item }}"
+    dest: "/etc/kubernetes/pki/"
+    rsync_opts:
+      - "--rsync-path='sudo rsync'"
+      - "--rsh=\"/usr/bin/ssh -i /home/{{ ansible_user }}/.ssh/id_rsa -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\""
+  when: inventory_hostname in groups['control-plane']
+  with_items: 
+    - apiserver-etcd-client.crt
+    - apiserver-etcd-client.key
+
+- name: Initialize Kubernetes control plane with kubeadm init
+  command: >
+    kubeadm init
+    --config {{ kubernetes.kubeadm_config_file_path }}
+  register: kubeadmin_init
+  when: not kubernetes_init_stat.stat.exists
+
+- name: Print the init output to screen.
+  debug:
+    var: kubeadmin_init.stdout
+  when: not kubernetes_init_stat.stat.exists
+
+- name: Ensure .kube directory exists.
+  file:
+    path: ~/.kube
+    state: directory
+    mode: 0755
+
+- name: Symlink the kubectl admin.conf to ~/.kube/conf.
+  file:
+    src: /etc/kubernetes/admin.conf
+    dest: ~/.kube/config
+    state: link
+    mode: 0644
+
+- name: Configure Flannel networking.
+  command: "kubectl apply -f {{ kubernetes_pod_network.manifest_file }}"
+  register: flannel_result
+  changed_when: "'created' in flannel_result.stdout"
+  when: kubernetes_pod_network.cni == 'flannel'
+  until: flannel_result is not failed
+  retries: 12
+  delay: 5
+
+- name: Allow pods on control plane (if configured).
+  command: "kubectl taint nodes --all node-role.kubernetes.io/control-plane-"
+  when:
+    - kubernetes.allow_pods_on_control_plane | bool
+    - not kubernetes_init_stat.stat.exists
+

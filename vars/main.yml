@@ -28,15 +28,6 @@ kubernetes:
       certSANs:
        - kube-cluster.homelab.local
        - kubec.dev.bestdavid.me
-    etcd:
-      external:
-        endpoints:
-          - https://192.168.0.212:2379 # change ETCD_0_IP appropriately
-          - https://192.168.0.213:2379 # change ETCD_1_IP appropriately
-          - https://192.168.0.214:2379 # change ETCD_2_IP appropriately
-        caFile: /etc/kubernetes/pki/etcd/ca.crt
-        certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt
-        keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key
   allow_pods_on_control_plane: true
 etcd:
   kubelet_config_drop_in_location: '/etc/systemd/system/kubelet.service.d'
@@ -55,7 +46,7 @@ etcd:
               - "{{ ansible_default_ipv4.address }}"
             extraArgs:
               - name: initial-cluster
-                value: kube12=https://192.168.0.212:2380,kube13=https://192.168.0.213:2380,kube14=https://192.168.0.214:2380 #TODO
+                value: "{{ etcd_endpoints }}" # the var will be set by set_fact in etcd-setup.yml
               - name: initial-cluster-state
                 value: new
               - name: name

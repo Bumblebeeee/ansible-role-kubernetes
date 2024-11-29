@@ -49,7 +49,7 @@
   when:
     - not kubernetes_init_stat.stat.exists
     - groups['etcd'] | default([], true) | count >= 3
-    - inventory_hostname == groups['kube-master'][0]
+    - inventory_hostname == groups['control-plane'][0]
     - not etcd_ca_key_stat.stat.exists
 
 - include_tasks: etcd-setup.yml
@@ -57,16 +57,14 @@
     - inventory_hostname in (groups['etcd'] | default([], true))
     - groups['etcd'] | default([], true) | count >= 3
 
-# TODO: copy apiserver-etcd-client.crt from the first member of groups['etcd'] to the first control plane IF there is multiple etcd node
-
-- include_tasks: control-plane-setup/control-plane-setup.yml
-  when: inventory_hostname in groups['kube-master']
+- include_tasks: control-plane-setup.yml
+  when: inventory_hostname in groups['control-plane']
 
 # # Set up nodes.
 # - name: Get the kubeadm join command from the Kubernetes control plane.
 #   command: kubeadm token create --print-join-command
 #   changed_when: false
-#   when: inventory_hostname in groups['kube-master']
+#   when: inventory_hostname in groups['control-plane']
 #   register: kubernetes_join_command_result
 
 # # # - name: display kubernetes_init_stat

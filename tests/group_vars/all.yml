@@ -1,0 +1,3 @@
+ansible_user: "dtang"
+docker_user: 
+  - "{{ ansible_user }}"
