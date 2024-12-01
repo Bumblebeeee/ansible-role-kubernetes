@@ -58,13 +58,50 @@
   command: >
     kubeadm init
     --config {{ kubernetes.kubeadm_config_file_path }}
+    --upload-certs
   register: kubeadmin_init
-  when: not kubernetes_init_stat.stat.exists
+  when:
+    - not kubernetes_init_stat.stat.exists
+    - inventory_hostname == groups['control-plane'][0]
 
 - name: Print the init output to screen.
   debug:
     var: kubeadmin_init.stdout
-  when: not kubernetes_init_stat.stat.exists
+  when:
+    - not kubernetes_init_stat.stat.exists
+    - inventory_hostname == groups['control-plane'][0]
+
+# Setup other control planes
+- name: Get the kubeadm join command from the Kubernetes control plane.
+  shell: >
+    kubeadm token create
+    --print-join-command
+    --certificate-key $(kubeadm init phase upload-certs --upload-certs | grep -v '\[upload-certs\]')
+  changed_when: false
+  when: inventory_hostname == groups['control-plane'][0]
+  register: kubernetes_control_plane_join_command_result
+
+- name: Set the kubeadm control plane join command globally.
+  set_fact:
+    kubernetes_control_plane_join_command: >
+      {{ kubernetes_control_plane_join_command_result.stdout }}
+      --cri-socket {{ kubernetes.init_configuration.nodeRegistration.criSocket }}
+  when: kubernetes_control_plane_join_command_result.stdout is defined
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  with_items: "{{ groups['control-plane'] }}"
+
+- name: debug
+  debug:
+    var: kubernetes_control_plane_join_command
+
+- name: Join node to Kubernetes control plane.
+  shell: >
+    {{ kubernetes_control_plane_join_command }}
+    creates=/etc/kubernetes/kubelet.conf
+  when:
+    - inventory_hostname in groups['control-plane']
+    - not inventory_hostname in groups['control-plane'][0]
 
 - name: Ensure .kube directory exists.
   file:
@@ -89,8 +126,7 @@
   delay: 5
 
 - name: Allow pods on control plane (if configured).
-  command: "kubectl taint nodes --all node-role.kubernetes.io/control-plane-"
+  command: "kubectl taint nodes {{ ansible_hostname }} node-role.kubernetes.io/control-plane-"
   when:
     - kubernetes.allow_pods_on_control_plane | bool
-    - not kubernetes_init_stat.stat.exists
-
+    - not inventory_hostname in groups['control-plane'][0]

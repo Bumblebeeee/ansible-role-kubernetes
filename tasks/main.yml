@@ -57,35 +57,34 @@
     - inventory_hostname in (groups['etcd'] | default([], true))
     - groups['etcd'] | default([], true) | count >= 3
 
+- include_tasks: ha-setup.yml
+  when: inventory_hostname == groups['control-plane'][0]
+
 - include_tasks: control-plane-setup.yml
   when: inventory_hostname in groups['control-plane']
 
-# # Set up nodes.
-# - name: Get the kubeadm join command from the Kubernetes control plane.
-#   command: kubeadm token create --print-join-command
-#   changed_when: false
-#   when: inventory_hostname in groups['control-plane']
-#   register: kubernetes_join_command_result
+# Set up nodes.
+- name: Get the kubeadm join command from the Kubernetes control plane.
+  command: kubeadm token create --print-join-command
+  changed_when: false
+  when: inventory_hostname in groups['control-plane'][0]
+  register: kubernetes_join_command_result
 
-# # # - name: display kubernetes_init_stat
-# # #   debug:
-# # #     var: kubernetes_join_command_result
+# - name: display kubernetes_init_stat
+#   debug:
+#     var: kubernetes_join_command_result
 
-# # # - name: AAAAAAA
-# # #   debug:
-# # #     var: groups['kube-node']
+- name: Set the kubeadm join command globally.
+  set_fact:
+    kubernetes_join_command: >
+      {{ kubernetes_join_command_result.stdout }} --cri-socket {{ kubernetes.init_configuration.nodeRegistration.criSocket }}
+  when: kubernetes_join_command_result.stdout is defined
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  with_items: "{{ groups['worker'] }}"
 
-# - name: Set the kubeadm join command globally.
-#   set_fact:
-#     kubernetes_join_command: >
-#       {{ kubernetes_join_command_result.stdout }} --cri-socket {{ kubernetes.init_configuration.nodeRegistration.criSocket }}
-#   when: kubernetes_join_command_result.stdout is defined
-#   delegate_to: "{{ item }}"
-#   delegate_facts: true
-#   with_items: "{{ groups['kube-node'] }}"
-
-# - include_tasks: node-setup.yml
-#   when: kubernetes_role == 'node'
+- include_tasks: worker-setup.yml
+  when: inventory_hostname in groups['worker']
 
 ####################################################################
 

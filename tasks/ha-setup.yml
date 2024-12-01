@@ -1,0 +1,19 @@
+# server ${HOST1_ID} ${HOST1_ADDRESS}:${APISERVER_SRC_PORT} check verify none
+    # [...]
+# - name: Set haproxy apiserverbackend dynamically
+#   set_fact:
+
+- name: Create the directory for the haproxy config
+  file:
+    path: "/etc/haproxy"
+    state: directory
+
+- name: Deploy HAProxy config file
+  template:
+    src: "haproxy.cfg.j2"
+    dest: "/etc/haproxy/haproxy.cfg"
+
+- name: Deploy haproxy static pod manifest
+  template:
+    src: "haproxy-kubelet-config.j2"
+    dest: "/etc/kubernetes/manifests/haproxy-kubelet-config.yaml"

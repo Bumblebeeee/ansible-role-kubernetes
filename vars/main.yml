@@ -20,14 +20,14 @@ kubernetes:
     nodeRegistration:
       criSocket: "unix:///var/run/crio/crio.sock"
   cluster_configuration:
+    controlPlaneEndpoint: "k8s.dev.bestdavid.me:8643"
     certificatesDir: "/etc/kubernetes/pki" # [renew](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/)
     networking:
       podSubnet: "{{ kubernetes_pod_network.cidr }}"
     cgroupDriver: "systemd"
     apiServer:
       certSANs:
-       - kube-cluster.homelab.local
-       - kubec.dev.bestdavid.me
+        - k8s.dev.bestdavid.me
     # etcd config will be generated in control-plane-setup.yml when etcd in HA mode
   allow_pods_on_control_plane: true
 etcd:
@@ -72,6 +72,21 @@ etcd:
     address: 127.0.0.1
     containerRuntimeEndpoint: "unix:///var/run/crio/crio.sock"
     staticPodPath: /etc/kubernetes/manifests
+haproxy:
+  frontend:
+    apiserver:
+      bind: 8643
+  backend:
+    apiserverbackend:
+      servers: >
+        {% for host in groups['control-plane'] %}
+        server {{ hostvars[host]['inventory_hostname'] }} {{ host }}:{{ kubernetes.init_configuration.localAPIEndpoint.bindPort }} check verify none\n
+        {% endfor %}
+  listen:
+    stats:
+      auth:
+        user: 'admin'
+        password: 'password'
 kubernetes_apiserver_advertise_address: ''
 kubernetes_pod_network:
   cni: 'flannel'

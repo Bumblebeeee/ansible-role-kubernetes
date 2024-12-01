@@ -2,7 +2,7 @@
 - name: Display the kubeadm join command for each node
   debug:
     msg: "{{ hostvars[item]['kubernetes_join_command'] }}"
-  with_items: "{{ groups['kube-node'] }}"
+  with_items: "{{ groups['worker'] }}"
   when: "hostvars[item]['kubernetes_join_command'] is defined"
 
 - name: Join node to Kubernetes control plane.
