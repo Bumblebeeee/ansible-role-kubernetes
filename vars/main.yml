@@ -18,7 +18,7 @@ kubernetes:
       advertiseAddress: "{{ kubernetes_apiserver_advertise_address | default(ansible_default_ipv4.address, true) }}"
       bindPort: 6443
     nodeRegistration:
-      criSocket: "unix:///var/run/crio/crio.sock"
+      criSocket: "{{ kubernetes_cri_socket }}"
   cluster_configuration:
     controlPlaneEndpoint: "k8s.dev.bestdavid.me:8643"
     certificatesDir: "/etc/kubernetes/pki" # [renew](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/)
@@ -88,6 +88,7 @@ haproxy:
         user: 'admin'
         password: 'password'
 kubernetes_apiserver_advertise_address: ''
+kubernetes_cri_socket: "unix:///var/run/crio/crio.sock"
 kubernetes_pod_network:
   cni: 'flannel'
   cidr: '10.244.0.0/16'
