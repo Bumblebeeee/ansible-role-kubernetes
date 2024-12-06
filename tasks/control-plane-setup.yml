@@ -85,7 +85,6 @@
   set_fact:
     kubernetes_control_plane_join_command: >
       {{ kubernetes_control_plane_join_command_result.stdout }}
-      --cri-socket {{ kubernetes.init_configuration.nodeRegistration.criSocket }}
   when: kubernetes_control_plane_join_command_result.stdout is defined
   delegate_to: "{{ item }}"
   delegate_facts: true
@@ -96,8 +95,8 @@
     var: kubernetes_control_plane_join_command
 
 - name: Join node to Kubernetes control plane.
-  shell: >
-    {{ kubernetes_control_plane_join_command }}
+  command: >
+    {{ kubernetes_control_plane_join_command }} --cri-socket {{ kubernetes.init_configuration.nodeRegistration.criSocket }}
     creates=/etc/kubernetes/kubelet.conf
   when:
     - inventory_hostname in groups['control-plane']
