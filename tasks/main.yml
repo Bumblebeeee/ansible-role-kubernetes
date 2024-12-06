@@ -11,10 +11,33 @@
     install_recommends: false
   notify: restart kubelet
 
-- name: Ensure br_netfilter module is loaded
-  ansible.builtin.shell: >
-    modprobe br_netfilter
+- name: Check if br_netfilter and iptable_nat modules are loaded
+  ansible.builtin.shell: "lsmod | grep -E 'br_netfilter|iptable_nat'"
+  register: loaded_modules
+  changed_when: false
+  failed_when: false
 
+- name: Ensure br_netfilter and iptable_nat modules are loaded
+  ansible.builtin.shell: |
+    modprobe br_netfilter
+    modprobe iptable_nat
+  when: loaded_modules.stdout == ''
+  register: modprobe_output
+  changed_when: modprobe_output.stdout != ''
+  failed_when: false
+
+- name: Create or update /etc/modules-load.d/k8s-modules.conf to load br_netfilter and iptable_nat
+  lineinfile:
+    path: /etc/modules-load.d/k8s-modules.conf
+    line: "{{ item }}"
+    create: yes
+  loop:
+    - br_netfilter
+    - iptable_nat
+
+# sudo sysctl net.bridge.bridge-nf-call-iptables=1
+# sudo sysctl net.bridge.bridge-nf-call-ip6tables=1
+# sudo sysctl -p
 - name: Enable br_netfilter persistently
   ansible.builtin.sysctl:
     name: "{{ item }}"

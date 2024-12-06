@@ -72,7 +72,7 @@
     - inventory_hostname == groups['control-plane'][0]
 
 # Setup other control planes
-- name: Get the kubeadm join command from the Kubernetes control plane.
+- name: Get the kubeadm control plane join command from the first control plane.
   shell: >
     kubeadm token create
     --print-join-command
@@ -91,7 +91,7 @@
   delegate_facts: true
   with_items: "{{ groups['control-plane'] }}"
 
-- name: debug
+- name: Display the kubeadm join command for control planes
   debug:
     var: kubernetes_control_plane_join_command
 
@@ -125,8 +125,18 @@
   retries: 12
   delay: 5
 
+- name: Get taints for control planes
+  command: kubectl describe node {{ ansible_hostname }}
+  register: node_description
+  changed_when: False  # Ensure it doesn't show as changed every time
+  failed_when: False  # Prevent it from failing if the node description doesn't change
+
+- name: Show taints
+  debug:
+    msg: "{{ node_description.stdout | regex_search('Taints:\\s*(node\\-role\\.kubernetes\\.io\\/control\\-plane:NoSchedule.*)') }}"
+
 - name: Allow pods on control plane (if configured).
   command: "kubectl taint nodes {{ ansible_hostname }} node-role.kubernetes.io/control-plane-"
   when:
     - kubernetes.allow_pods_on_control_plane | bool
-    - not inventory_hostname in groups['control-plane'][0]
+    - node_description.stdout | regex_search('Taints:\\s*(node\\-role\\.kubernetes\\.io\\/control\\-plane:NoSchedule.*)') is not none

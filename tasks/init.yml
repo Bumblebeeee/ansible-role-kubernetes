@@ -31,7 +31,7 @@
     url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  become: yes
+  become: true
 
 - name: Set permissions on Kubernetes APT keyring
   ansible.builtin.file:
