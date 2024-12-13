@@ -48,7 +48,7 @@
 - name: Add sudo rule for {{ ansible_user }} in /etc/sudoers.d/
   ansible.builtin.copy:
     dest: /etc/sudoers.d/{{ ansible_user }}_rsync
-    content: "{{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/rsync"
+    content: "{{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/rsync\n"
     owner: root
     group: root
     mode: '0440'
@@ -64,41 +64,8 @@
     mode: '0700'
   when: groups['etcd'] | default([], true) | count >= 3
 
-# For passing etcd ca to etcd servers
-- name: Generate SSH key pair for the first control plane
-  ansible.builtin.openssh_keypair:
-    path: /home/{{ ansible_user }}/.ssh/id_rsa
-    type: rsa
-    size: 4096
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0600'
-  register: control_plane_ssh_keypair
-  when:
-    - inventory_hostname == groups['control-plane'][0]
-    - groups['etcd'] | default([], true) | count >= 3
-
-- name: Set the public key among etcd group
-  set_fact:
-    control_plane_public_key: "{{ control_plane_ssh_keypair.public_key }}"
-  delegate_to: "{{ item }}"
-  delegate_facts: true
-  with_items: "{{ groups['etcd'] }}"
-  when:
-    - control_plane_ssh_keypair.public_key is defined
-    - groups['etcd'] | default([], true) | count >= 3
-
-- name: Add the public key to the etcd hosts' authorized_keys
-  authorized_key:
-    user: "{{ ansible_user }}"
-    state: present
-    key: "{{ control_plane_public_key }}"
-  when:
-    - groups['etcd'] | default([], true) | count >= 3
-    - inventory_hostname in groups['etcd']
-
-# For passing apiserver-etcd-client cert to control planes
-- name: Generate SSH key pair for the first etcd server
+# For passing etcd ca to etcd and control plane
+- name: Generate SSH key pair on the first etcd node
   ansible.builtin.openssh_keypair:
     path: /home/{{ ansible_user }}/.ssh/id_rsa
     type: rsa
@@ -111,21 +78,21 @@
     - groups['etcd'] | default([], true) | count >= 3
     - inventory_hostname == groups['etcd'][0]
 
-- name: Set the public key among control plane group
+- name: Set the public key among etcd and control plane group
   set_fact:
     etcd_public_key: "{{ etcd_ssh_keypair.public_key }}"
   delegate_to: "{{ item }}"
   delegate_facts: true
-  with_items: "{{ groups['control-plane'] }}"
+  with_items: "{{ groups['control-plane'] | union(groups['etcd']) }}"
   when:
     - groups['etcd'] | default([], true) | count >= 3
     - etcd_ssh_keypair.public_key is defined
 
-- name: Add the public key to the etcd hosts' authorized_keys
+- name: Add the public key to the etcd and control plane hosts' authorized_keys
   authorized_key:
     user: "{{ ansible_user }}"
     state: present
     key: "{{ etcd_public_key }}"
   when:
-    - inventory_hostname in groups['control-plane']
     - groups['etcd'] | default([], true) | count >= 3
+    - inventory_hostname in (groups['control-plane'] | union(groups['etcd']))

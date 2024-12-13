@@ -1,4 +1,9 @@
 ---
+- name: Check if Kubernetes has already been initialized.
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubernetes_init_stat
+
 - name: Create the directory for the kubernetes_config_file
   file:
     path: "{{ kubernetes.kubeadm_config_file_path | dirname }}"
@@ -39,20 +44,25 @@
 # scp /etc/kubernetes/pki/etcd/ca.crt "${CONTROL_PLANE}": # Ignore. This file was created on the first CP
 # scp /etc/kubernetes/pki/apiserver-etcd-client.crt "${CONTROL_PLANE}":
 # scp /etc/kubernetes/pki/apiserver-etcd-client.key "${CONTROL_PLANE}":
+- name: Create the directory for the etcd cert
+  file:
+    path: "/etc/kubernetes/pki/etcd"
+    state: directory
+
 - name: Copy apiserver-etcd-client cert & key from the first etcd server to the control plane
   delegate_to: "{{ groups['etcd'][0] }}"
   synchronize:
     src: "/etc/kubernetes/pki/{{ item }}"
-    dest: "/etc/kubernetes/pki/"
+    dest: "/etc/kubernetes/pki/{{ item }}"
     rsync_opts:
       - "--rsync-path='sudo rsync'"
-      - "--rsh=\"/usr/bin/ssh -i /home/{{ ansible_user }}/.ssh/id_rsa -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\""
+      - "--rsh=\"/usr/bin/ssh -i /home/{{ hostvars[groups['etcd'][0]].ansible_user }}/.ssh/id_rsa -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\""
   when:
     - groups['etcd'] | default([], true) | count >= 3
-    - inventory_hostname in groups['control-plane']
   with_items:
     - apiserver-etcd-client.crt
     - apiserver-etcd-client.key
+    - etcd/ca.crt
 
 - name: Initialize Kubernetes control plane with kubeadm init
   command: >
@@ -64,24 +74,122 @@
     - not kubernetes_init_stat.stat.exists
     - inventory_hostname == groups['control-plane'][0]
 
-- name: Print the init output to screen.
-  debug:
-    var: kubeadmin_init.stdout
+- name: Ensure .kube directory exists.
+  file:
+    path: ~/.kube
+    state: directory
+    mode: 0755
+  when: inventory_hostname == groups['control-plane'][0]
+
+- name: Symlink the kubectl admin.conf to ~/.kube/conf.
+  file:
+    src: /etc/kubernetes/admin.conf
+    dest: ~/.kube/config
+    state: link
+    mode: 0644
+  when: inventory_hostname == groups['control-plane'][0]
+
+- name: Configure Flannel networking.
+  command: "kubectl apply -f {{ kubernetes_pod_network.manifest_file }}"
+  register: flannel_result
+  changed_when: "'created' in flannel_result.stdout"
   when:
-    - not kubernetes_init_stat.stat.exists
+    - kubernetes_pod_network.cni == 'flannel'
     - inventory_hostname == groups['control-plane'][0]
+  until: flannel_result is not failed
+  retries: 12
+  delay: 5
 
 # Setup other control planes
+# the upload-certs flag doesn't upload external etcd cert/keys
+# Have to copy manually
+# For passing api server ca to control plane
+- name: Generate SSH key pair on the first control plane node
+  ansible.builtin.openssh_keypair:
+    path: /home/{{ ansible_user }}/.ssh/id_rsa
+    type: rsa
+    size: 4096
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  register: control_plane_ssh_keypair
+  when:
+    - inventory_hostname == groups['control-plane'][0]
+    - groups['control-plane'] | default([], true) | count > 1
+    - groups['etcd'] | default([], true) | count >= 3
+
+- name: Set the public key among control plane group
+  set_fact:
+    control_plane_public_key: "{{ control_plane_ssh_keypair.public_key }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  with_items: "{{ groups['control-plane'] }}"
+  when:
+    - control_plane_ssh_keypair.public_key is defined
+    - groups['control-plane'] | default([], true) | count > 1
+    - groups['etcd'] | default([], true) | count >= 3
+
+- name: Add the public key to the control plane hosts' authorized_keys
+  authorized_key:
+    user: "{{ ansible_user }}"
+    state: present
+    key: "{{ control_plane_public_key }}"
+  when:
+    - groups['control-plane'] | default([], true) | count > 1
+    - groups['etcd'] | default([], true) | count >= 3
+
+# ```
+    # scp /etc/kubernetes/pki/ca.crt "${USER}"@$host:
+    # scp /etc/kubernetes/pki/ca.key "${USER}"@$host:
+    # scp /etc/kubernetes/pki/sa.key "${USER}"@$host:
+    # scp /etc/kubernetes/pki/sa.pub "${USER}"@$host:
+    # scp /etc/kubernetes/pki/front-proxy-ca.crt "${USER}"@$host:
+    # scp /etc/kubernetes/pki/front-proxy-ca.key "${USER}"@$host:
+# ```
+# Then, run kubeadm token create --print-join command( as same as workers join command)
+# add --control-plane and --cri-socket flag for spinning up sencondary control-plane
+- name: Copy ca from the first control plane nodes
+  delegate_to: "{{ groups['control-plane'][0] }}"
+  synchronize:
+    src: "/etc/kubernetes/pki/{{ item }}"
+    dest: "/etc/kubernetes/pki/"
+    rsync_opts:
+      - "--rsync-path='sudo rsync'"
+      - "--rsh=\"/usr/bin/ssh -i /home/{{ hostvars[groups['control-plane'][0]].ansible_user }}/.ssh/id_rsa -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\""
+  with_items:
+    - ca.crt
+    - ca.key
+    - sa.key
+    - sa.pub
+    - front-proxy-ca.crt
+    - front-proxy-ca.key
+  when:
+    - not inventory_hostname == groups['control-plane'][0]
+    - groups['control-plane'] | default([], true) | count > 1
+    - groups['etcd'] | default([], true) | count >= 3
+
+- name: Get certificate key from the first control plane
+  shell: >
+    kubeadm init phase upload-certs --upload-certs | grep -v '\[upload-certs\]'
+  register: cluster_certificate_key
+  changed_when: false
+  when:
+    - inventory_hostname == groups['control-plane'][0]
+    - groups['control-plane'] | default([], true) | count > 1
+    - not groups['etcd'] | default([], true) | count >= 3
+
 - name: Get the kubeadm control plane join command from the first control plane.
   shell: >
     kubeadm token create
     --print-join-command
-    --certificate-key $(kubeadm init phase upload-certs --upload-certs | grep -v '\[upload-certs\]')
+    {% if cluster_certificate_key.stdout is defined %}
+    --certificate-key {{ cluster_certificate_key.stdout }}
+    {% endif %}
   changed_when: false
   when: inventory_hostname == groups['control-plane'][0]
   register: kubernetes_control_plane_join_command_result
 
-- name: Set the kubeadm control plane join command globally.
+- name: Set the kubeadm control plane join command among control planes.
   set_fact:
     kubernetes_control_plane_join_command: >
       {{ kubernetes_control_plane_join_command_result.stdout }}
@@ -90,49 +198,22 @@
   delegate_facts: true
   with_items: "{{ groups['control-plane'] }}"
 
-- name: Display the kubeadm join command for control planes
-  debug:
-    var: kubernetes_control_plane_join_command
-
 - name: Join node to Kubernetes control plane.
   command: >
-    {{ kubernetes_control_plane_join_command }} --cri-socket {{ kubernetes.init_configuration.nodeRegistration.criSocket }}
-    creates=/etc/kubernetes/kubelet.conf
+    {{ kubernetes_control_plane_join_command }}
+    --control-plane
+    --cri-socket {{ kubernetes.init_configuration.nodeRegistration.criSocket }}
+  args:
+    creates: "/etc/kubernetes/kubelet.conf"
   when:
-    - inventory_hostname in groups['control-plane']
     - not inventory_hostname in groups['control-plane'][0]
-
-- name: Ensure .kube directory exists.
-  file:
-    path: ~/.kube
-    state: directory
-    mode: 0755
-
-- name: Symlink the kubectl admin.conf to ~/.kube/conf.
-  file:
-    src: /etc/kubernetes/admin.conf
-    dest: ~/.kube/config
-    state: link
-    mode: 0644
-
-- name: Configure Flannel networking.
-  command: "kubectl apply -f {{ kubernetes_pod_network.manifest_file }}"
-  register: flannel_result
-  changed_when: "'created' in flannel_result.stdout"
-  when: kubernetes_pod_network.cni == 'flannel'
-  until: flannel_result is not failed
-  retries: 12
-  delay: 5
+    - groups['control-plane'] | default([], true) | count > 1
 
 - name: Get taints for control planes
   command: kubectl describe node {{ ansible_hostname }}
   register: node_description
   changed_when: False  # Ensure it doesn't show as changed every time
   failed_when: False  # Prevent it from failing if the node description doesn't change
-
-- name: Show taints
-  debug:
-    msg: "{{ node_description.stdout | regex_search('Taints:\\s*(node\\-role\\.kubernetes\\.io\\/control\\-plane:NoSchedule.*)') }}"
 
 - name: Allow pods on control plane (if configured).
   command: "kubectl taint nodes {{ ansible_hostname }} node-role.kubernetes.io/control-plane-"

@@ -49,32 +49,6 @@
     - net.bridge.bridge-nf-call-ip6tables
     - net.ipv4.ip_forward
 
-- name: Check if Kubernetes has already been initialized.
-  stat:
-    path: /etc/kubernetes/admin.conf
-  register: kubernetes_init_stat
-
-# - name: display kubernetes_init_stat
-#   debug:
-#     var: kubernetes_init_stat
-
-- name: Check if etcd CA key already exists
-  stat:
-    path: /etc/kubernetes/pki/etcd/ca.key
-  when:
-    - groups['etcd'] | default([], true) | count >= 3
-  register: etcd_ca_key_stat
-
-- name: Initialize Kubernetes control plane with kubeadm init
-  command: >
-    kubeadm init phase certs etcd-ca
-  register: kubeadmin_init
-  when:
-    - not kubernetes_init_stat.stat.exists
-    - groups['etcd'] | default([], true) | count >= 3
-    - inventory_hostname == groups['control-plane'][0]
-    - not etcd_ca_key_stat.stat.exists
-
 - include_tasks: etcd-setup.yml
   when: 
     - inventory_hostname in (groups['etcd'] | default([], true))
@@ -90,7 +64,7 @@
 - name: Get the kubeadm join command from the Kubernetes control plane.
   command: kubeadm token create --print-join-command
   changed_when: false
-  when: inventory_hostname in groups['control-plane'][0]
+  when: inventory_hostname == groups['control-plane'][0]
   register: kubernetes_join_command_result
 
 # - name: display kubernetes_init_stat
@@ -108,6 +82,7 @@
 
 - include_tasks: worker-setup.yml
   when: inventory_hostname in groups['worker']
+
 
 ####################################################################
 

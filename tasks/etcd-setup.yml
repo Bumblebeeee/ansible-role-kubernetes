@@ -1,4 +1,18 @@
 ---
+- name: Check if etcd cluster already exists
+  ansible.builtin.stat:
+    path: /etc/kubernetes/pki/etcd/ca.key
+  when: inventory_hostname == groups['etcd'][0]
+  register: etcd_ca_key_stat
+
+- name: Generate CA for etcd cluster
+  command: >
+    kubeadm init phase certs etcd-ca
+  register: kubeadmin_init
+  when:
+    - inventory_hostname == groups['etcd'][0]
+    - not etcd_ca_key_stat.stat.exists
+
 - name: Generate etcd ha cluster init_configuration
   set_fact:
     etcd_endpoints: >-
@@ -34,13 +48,9 @@
   template:
     src: "etcd-kubelet-config.j2"
     dest: "{{ etcd.kubelet_config_drop_in_location }}/etcd-kubelet.yaml"
-
-- name: Just force systemd to reread configs
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-
-- name: Restart kubelet
-  service: name=kubelet state=restarted
+  notify:
+    - systemd daemon_reload
+    - restart kubelet
 
 - name: Ensure the ca directory exists
   file:
@@ -48,21 +58,17 @@
     state: directory
     mode: '0755'
 
-- name: Copy etcd-ca from the first control plane to etcd nodes
-  delegate_to: "{{ groups['control-plane'][0] }}"
+- name: Copy etcd-ca from the first etcd nodes
+  delegate_to: "{{ groups['etcd'][0] }}"
   synchronize:
     src: "/etc/kubernetes/pki/etcd/{{ item }}"
     dest: "/etc/kubernetes/pki/etcd/"
     rsync_opts:
       - "--rsync-path='sudo rsync'"
-      - "--rsh=\"/usr/bin/ssh -i /home/{{ ansible_user }}/.ssh/id_rsa -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\""
-  when: inventory_hostname in groups['etcd']
+      - "--rsh=\"/usr/bin/ssh -i /home/{{ hostvars[groups['etcd'][0]].ansible_user }}/.ssh/id_rsa -S none -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\""
   with_items: 
     - ca.crt
     - ca.key
-
-
-# TODO: verify if etcd is up and running
 
 # - name: Download etcd-ca, etcd-key from s3
 #   aws_s3:
@@ -108,3 +114,23 @@
     --config={{ etcd.etcd_config_file_path }}
   args:
     creates: "/etc/kubernetes/manifests/etcd.yaml"
+  notify: 
+    - restart kubelet
+
+- name: Flush handlers to restart kubelet immediately
+  meta: flush_handlers
+
+- name: Verify if etcd is up and running
+  environment:
+    ETCDCTL_API: "3"
+  command: >
+    etcdctl
+    --cert /etc/kubernetes/pki/etcd/peer.crt
+    --key /etc/kubernetes/pki/etcd/peer.key
+    --cacert /etc/kubernetes/pki/etcd/ca.crt
+    --endpoints https://{{ inventory_hostname }}:2379 endpoint health
+  register: etcd_health_status
+  failed_when: "'successfully' not in etcd_health_status.stderr"
+  changed_when: false
+  retries: 12
+  delay: 5

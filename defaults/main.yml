@@ -6,6 +6,7 @@ kubernetes:
     - kubeadm
     - kubelet
     - kubernetes-cni
+    - etcd-client
   pre_packages:
     - apt-transport-https
     - ca-certificates
@@ -72,7 +73,7 @@ etcd:
       mode: AlwaysAllow
     cgroupDriver: systemd
     address: 127.0.0.1
-    containerRuntimeEndpoint: "{{ container_runtime_endpoint | default(unix:///var/run/crio/crio.sock, true) }}"
+    containerRuntimeEndpoint: "{{ container_runtime_endpoint | default('unix:///var/run/crio/crio.sock', true) }}"
     staticPodPath: /etc/kubernetes/manifests
 haproxy:
   frontend:

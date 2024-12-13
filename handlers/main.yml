@@ -2,3 +2,8 @@
 # handlers file for install-kubernetes
 - name: restart kubelet
   service: name=kubelet state=restarted
+  listen: restart kubelet
+
+- name: systemd daemon_reload
+  ansible.builtin.systemd_service:
+    daemon_reload: true
